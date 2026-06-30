@@ -1,0 +1,601 @@
+{
+  "info": {
+    "name": "TaskFlow API",
+    "description": "Complete API collection for TaskFlow. Run requests top-to-bottom inside a folder -- each request automatically saves IDs (taskId, commentId, etc.) into collection variables that later requests reuse, so you do not have to copy/paste anything by hand.\n\nSETUP:\n1. Make sure your server is running: npm run dev (http://localhost:3000)\n2. Make sure MongoDB is connected (local or Atlas)\n3. Run '1. Auth > Register' first to create an account, OR 'Login' if you already seeded demo data\n4. Postman automatically stores the login cookie and reuses it for every later request\n\nDEMO LOGINS (after running npm run seed):\n  manager@demo.taskflow.app / Password123!\n  employee@demo.taskflow.app / Password123!\n  lead@demo.taskflow.app / Password123!\n  admin@demo.taskflow.app / Password123!",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "taskId", "value": "", "type": "string" },
+    { "key": "subtaskId", "value": "", "type": "string" },
+    { "key": "commentId", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" },
+    { "key": "fileUrl", "value": "", "type": "string" },
+    { "key": "fileName", "value": "", "type": "string" },
+    { "key": "fileSize", "value": "0", "type": "string" },
+    { "key": "mimeType", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register (create org + Super Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationName\": \"My Test Company\",\n  \"name\": \"Postman Tester\",\n  \"email\": \"postman.tester@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"] },
+            "description": "Creates a brand-new organization AND your first user, who automatically becomes Super Admin. Postman saves the login cookie automatically -- every request after this one is already authenticated as this user."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.collectionVariables.set('userId', data.user.id);",
+                  "  console.log('Registered as Super Admin:', data.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (seeded demo manager)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager@demo.taskflow.app\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] },
+            "description": "Use this if you ran npm run seed. Swap the email to log in as a different role:\nmanager@demo.taskflow.app | employee@demo.taskflow.app | lead@demo.taskflow.app | admin@demo.taskflow.app\n\nPostman stores the returned cookie automatically (see your cookie jar icon, top right) -- all later requests in this collection reuse it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.collectionVariables.set('userId', data.user.id);",
+                  "  console.log('Logged in as:', data.user.role, data.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (seeded demo employee)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"employee@demo.taskflow.app\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] },
+            "description": "Switch the active session to the Employee demo account. Run this between testing manager-only vs employee-only behavior."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 200', () => pm.response.to.have.status(200));"] } }
+          ]
+        },
+        {
+          "name": "Get current user (/me)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/auth/me", "host": ["{{base_url}}"], "path": ["api", "auth", "me"] },
+            "description": "Confirms who you are currently logged in as. Returns 401 if the cookie is missing/expired -- use this any time you are confused about your current session."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 200', () => pm.response.to.have.status(200));"] } }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
+            "description": "Clears the auth cookies. After this, /me should return 401 again."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Users & Team",
+      "item": [
+        {
+          "name": "List organization users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/users", "host": ["{{base_url}}"], "path": ["api", "users"] },
+            "description": "Returns everyone in your organization -- used to populate assignee/mention pickers. Copy a user's _id from the response if you want to manually target a specific assignee in the Create Task request below."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Tasks - Core CRUD",
+      "item": [
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Fix login page mobile layout\",\n  \"description\": \"The form overflows on screens under 360px wide.\",\n  \"assigneeIds\": [\"{{userId}}\"],\n  \"priority\": \"high\",\n  \"visibility\": \"team_only\",\n  \"dueDate\": \"2026-07-01T00:00:00.000Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks", "host": ["{{base_url}}"], "path": ["api", "tasks"] },
+            "description": "Requires Manager/Team Lead/Super Admin (RBAC: task:create). Returns 403 if you are logged in as Employee.\n\nassigneeIds defaults to {{userId}} (yourself) so this works out of the box -- replace with a real teammate's _id from 'List organization users' to assign someone else."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const task = pm.response.json().data;",
+                  "  pm.collectionVariables.set('taskId', task._id);",
+                  "  console.log('Created task:', task._id, task.title);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks (visible to me)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/tasks?status=&priority=&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                { "key": "status", "value": "", "description": "todo | in_progress | need_clarification | under_review | completed | rejected | reopened" },
+                { "key": "priority", "value": "", "description": "low | medium | high | urgent" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "Returns only tasks the CURRENT logged-in user is allowed to see, based on RBAC + visibility rules. Try this while logged in as Employee vs Manager to see the difference -- that is the visibility filtering in action."
+          }
+        },
+        {
+          "name": "Get single task",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}"] },
+            "description": "Uses the taskId saved automatically from Create task. If logged in as Employee, the managerNotes field is stripped from the response entirely -- try comparing the raw JSON between roles."
+          }
+        },
+        {
+          "name": "Update task (title/priority/etc.)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"urgent\",\n  \"description\": \"Updated: also affects tablets in landscape mode.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}"] },
+            "description": "General field edits. Only the task creator/assignee (or a Manager/Admin) can do this. To change visibility or managerNotes specifically, you need task:set_visibility / task:set_manager_notes permission (Team Lead and above)."
+          }
+        },
+        {
+          "name": "Set manager-only notes (Manager+ only)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"managerNotes\": \"Internal: this client is sensitive about mobile bugs, prioritize over other tickets this sprint.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}"] },
+            "description": "Try running this while logged in as Employee -- expect a 403. Then switch to the Manager login and re-run it. Then fetch the task as Employee again (Get single task) and confirm managerNotes is missing from the response."
+          }
+        },
+        {
+          "name": "Delete task (Manager/Admin only)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}"] },
+            "description": "Permanently deletes the task. Only Manager/Super Admin can do this (Team Lead and Employee get 403). Do not run this until you are done testing -- later requests in this collection rely on {{taskId}} still existing."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Status Workflow",
+      "item": [
+        {
+          "name": "Move to In Progress",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"in_progress\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/status", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "status"] },
+            "description": "Legal from: todo, need_clarification, reopened. A brand-new task starts as todo, so this should succeed first."
+          }
+        },
+        {
+          "name": "Move to Need Clarification",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"need_clarification\",\n  \"comment\": \"Should this also cover tablets, or just phones?\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/status", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "status"] },
+            "description": "The optional comment field auto-posts a message into the task's discussion thread at the same time as the status change -- check List comments afterward to see it appear there."
+          }
+        },
+        {
+          "name": "Try illegal transition (expect 422)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"completed\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/status", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "status"] },
+            "description": "Demonstrates the workflow engine: you cannot jump from need_clarification straight to completed. Expect HTTP 422 with a message listing which transitions ARE legal from the current status."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 422 (illegal transition blocked)', () => pm.response.to.have.status(422));"] } }
+          ]
+        },
+        {
+          "name": "Move back to In Progress, then Under Review",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"in_progress\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/status", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "status"] },
+            "description": "Run this once with status=in_progress, then edit the body to status=under_review and run it again to actually reach the review stage needed for the Approval requests in section 6."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Discussion Thread (Comments)",
+      "item": [
+        {
+          "name": "Post a comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Just confirming -- this fix only needs to target phones under 360px, correct?\",\n  \"mentions\": [],\n  \"isInternal\": false,\n  \"isClarificationRequest\": false,\n  \"isDecision\": false,\n  \"attachments\": []\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/comments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "comments"] },
+            "description": "The core USP feature. This is a plain comment. Try the other requests below to see the special flags in action: isClarificationRequest (auto-flips task status), isInternal (hidden from employees), isDecision (logged for the knowledge base)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('commentId', pm.response.json().data._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Post a clarification request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"I'm blocked -- need to know which browser versions to support before I continue.\",\n  \"isClarificationRequest\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/comments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "comments"] },
+            "description": "This is the Ask Before Calling feature. Setting isClarificationRequest=true automatically flips the task's status to need_clarification AND notifies the manager -- check Get single task afterward and confirm the status changed without you calling the status endpoint directly."
+          }
+        },
+        {
+          "name": "Post an internal/manager-only comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Heads up -- this client has a history of scope creep, keep the fix narrow.\",\n  \"isInternal\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/comments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "comments"] },
+            "description": "Requires Manager/Team Lead/Admin (expect 403 as Employee). After posting, switch your login to the Employee account and run List comments -- this message should be completely absent from their view."
+          }
+        },
+        {
+          "name": "Post a decision (knowledge base entry)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Decision: support Chrome, Safari, and Firefox latest 2 versions only. No IE11.\",\n  \"isDecision\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/comments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "comments"] },
+            "description": "Tags this comment as a recorded decision -- this is what makes the discussion thread double as a permanent knowledge base instead of just chat."
+          }
+        },
+        {
+          "name": "List comments (discussion thread)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/comments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "comments"] },
+            "description": "Returns the full thread in chronological order. Run this while logged in as Manager (sees everything) vs Employee (internal comments filtered out) to see the permission enforcement directly in the response body."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Approval Workflow",
+      "item": [
+        {
+          "name": "Approve task",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"approved\",\n  \"note\": \"Looks good, nice work.\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/approve", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "approve"] },
+            "description": "Task must be status=under_review first (see Section 4). Requires Manager/Team Lead/Admin. Approving auto-sets status to completed and posts the note as a decision comment."
+          }
+        },
+        {
+          "name": "Request changes",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"changes_requested\",\n  \"note\": \"Please also handle the landscape orientation case.\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/approve", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "approve"] },
+            "description": "Sends the task back to in_progress rather than completing or rejecting it outright."
+          }
+        },
+        {
+          "name": "Reject task",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"rejected\",\n  \"note\": \"This doesn't meet requirements, needs a fresh approach.\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/approve", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "approve"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Subtasks",
+      "item": [
+        {
+          "name": "Create subtask",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Write unit test for the layout fix\",\n  \"assigneeIds\": [\"{{userId}}\"],\n  \"priority\": \"medium\",\n  \"parentTaskId\": \"{{taskId}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks", "host": ["{{base_url}}"], "path": ["api", "tasks"] },
+            "description": "Same endpoint as Create task -- passing parentTaskId is what makes it a subtask. Notice it goes through the SAME RBAC/validation logic, not a separate subtask-specific code path."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('subtaskId', pm.response.json().data._id); }"] }
+            }
+          ]
+        },
+        {
+          "name": "List subtasks of a task",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/subtasks", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "subtasks"] },
+            "description": "Returns every task whose parentTaskId matches {{taskId}} -- should include the subtask you just created."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. File Attachments",
+      "item": [
+        {
+          "name": "Upload a file",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": [] }]
+            },
+            "url": { "raw": "{{base_url}}/api/uploads", "host": ["{{base_url}}"], "path": ["api", "uploads"] },
+            "description": "IMPORTANT: click into the Body tab, click Select Files next to the file field, and pick any file from your computer (try a small image or PDF, max 10MB by default).\n\nThis only uploads and stores the file -- it does NOT attach it to a task yet. That is the next request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const f = pm.response.json().data;",
+                  "  pm.collectionVariables.set('fileUrl', f.fileUrl);",
+                  "  pm.collectionVariables.set('fileName', f.fileName);",
+                  "  pm.collectionVariables.set('fileSize', f.fileSize);",
+                  "  pm.collectionVariables.set('mimeType', f.mimeType);",
+                  "  console.log('Uploaded:', f.fileUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach uploaded file to task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileName\": \"{{fileName}}\",\n  \"fileUrl\": \"{{fileUrl}}\",\n  \"fileSize\": {{fileSize}},\n  \"mimeType\": \"{{mimeType}}\",\n  \"isPrivate\": false\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/attachments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "attachments"] },
+            "description": "Links the file you just uploaded to the task. Set isPrivate=true to test the manager-only attachment visibility rule (requires Manager/Team Lead/Admin permission to set)."
+          }
+        },
+        {
+          "name": "List task attachments",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/attachments", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "attachments"] },
+            "description": "Private attachments are automatically filtered out for Employee logins, same pattern as managerNotes and internal comments."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Personal Private Notes",
+      "item": [
+        {
+          "name": "Get my private note for this task",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/notes", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "notes"] },
+            "description": "Returns YOUR OWN note only -- there is no endpoint to read someone else's personal note, not even for managers. Returns an empty body the first time."
+          }
+        },
+        {
+          "name": "Save my private note",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"body\": \"Remember to double check this on an actual iPhone SE before marking complete.\"\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/notes", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "notes"] },
+            "description": "Creates or overwrites your private note for this task (upsert). Log in as a different user and run Get my private note again -- it will be empty, proving notes are fully siloed per-user."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Activity Timeline & Audit Log",
+      "item": [
+        {
+          "name": "Get task activity log",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}/activity", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}", "activity"] },
+            "description": "Append-only audit trail -- every status change, comment, approval, and attachment you triggered in this collection should show up here in order, each with who did it and when."
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Notifications",
+      "item": [
+        {
+          "name": "List my notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/notifications?unread=false",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications"],
+              "query": [{ "key": "unread", "value": "false", "description": "set to true to only see unread notifications" }]
+            },
+            "description": "Every action elsewhere in this collection (task assigned, comment posted, mentioned, status changed, approved/rejected) generates a Notification document for relevant users. Switch your login to the assignee and check their notifications here."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.length > 0) { pm.collectionVariables.set('notificationId', data[0]._id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark notification as read",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/notifications/{{notificationId}}", "host": ["{{base_url}}"], "path": ["api", "notifications", "{{notificationId}}"] },
+            "description": "Uses the most recent notification ID saved automatically from List my notifications."
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Dashboard Stats",
+      "item": [
+        {
+          "name": "Get dashboard stats (role-aware)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/dashboard/stats", "host": ["{{base_url}}"], "path": ["api", "dashboard", "stats"] },
+            "description": "Returns completely different data shapes depending on your role:\n- Manager/Team Lead/Admin: scope=team with needsApproval, needsClarificationList, recentlyOverdue, teamPerformance\n- Employee: scope=personal with myUpcoming, myUrgent\n\nLog in as each role and compare the response -- this is the API behind the two different dashboard UIs."
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. RBAC Negative Tests (expect failures)",
+      "item": [
+        {
+          "name": "Employee tries to create a task (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"This should fail\",\n  \"assigneeIds\": [\"{{userId}}\"]\n}" },
+            "url": { "raw": "{{base_url}}/api/tasks", "host": ["{{base_url}}"], "path": ["api", "tasks"] },
+            "description": "Run Login (seeded demo employee) first, then run this. Expect HTTP 403 'You do not have permission to create tasks.' -- proves task:create is correctly blocked for the Employee role."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 403', () => pm.response.to.have.status(403));"] } }
+          ]
+        },
+        {
+          "name": "Employee tries to delete a task (expect 403)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/tasks/{{taskId}}", "host": ["{{base_url}}"], "path": ["api", "tasks", "{{taskId}}"] },
+            "description": "While logged in as Employee, deletion should be blocked even for a task they are assigned to."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 403', () => pm.response.to.have.status(403));"] } }
+          ]
+        },
+        {
+          "name": "No cookie at all (expect 401, instant)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tasks", "host": ["{{base_url}}"], "path": ["api", "tasks"] },
+            "description": "Run Logout first, then run this. Expect HTTP 401 'Not authenticated' -- and it should return INSTANTLY, even if MongoDB is slow/unreachable, because the cookie check happens before any database call."
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Status is 401', () => pm.response.to.have.status(401));"] } }
+          ]
+        }
+      ]
+    }
+  ]
+}
